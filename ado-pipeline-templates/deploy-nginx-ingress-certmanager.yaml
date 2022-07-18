@@ -1,0 +1,135 @@
+# This pipeline works with Microsoft managed Azure DevOps agents. The whitelisting tasks are not required if using self-hosted Azure DevOps agents.
+
+variables:
+- name: subscriptionName 
+  value: ''
+- name: rgName
+  value: ''
+- name: aksRgName
+  value: ''
+- name: aksClusterName
+  value: ''
+- name: vpnIp
+  value: ''
+- name: ingressPipName
+  value: ''
+- name: acmeEmailAddress
+  value: ''
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+- job: ingressDeploy
+  displayName: Deploy NGINX Ingress and Cert-Manager
+  steps:
+  - task: Bash@3
+    displayName: Install kubelogin
+    inputs:
+      targetType: 'inline'
+      script: |
+        brew install Azure/kubelogin/kubelogin 
+
+  - task: AzureCLI@2
+    displayName: Login to Azure and save credentials
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        az aks get-credentials --resource-group $(rgName) --name $(aksClusterName) --overwrite-existing --file .kubeconfig-$(aksClusterName)
+        echo "export servicePrincipalId=$servicePrincipalId" >.env
+        echo "export servicePrincipalKey=$servicePrincipalKey" >>.env
+        echo "export tenantId=$tenantId" >>.env
+      addSpnToEnvironment: true
+
+  - task: AzureCLI@2
+    displayName: Whitelist current agent IP in AKS
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'pscore'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        $currentPublicIp = (Invoke-WebRequest -uri "http://ifconfig.me/ip").Content
+        $aksWhitelistedIps = ("$(vpnIp),$currentPublicIp")
+        az aks update -g $(rgName) -n $(aksClusterName) --api-server-authorized-ip-ranges $aksWhitelistedIps
+
+  - task: Bash@3
+    displayName: Login to AKS
+    inputs:
+      targetType: 'inline'
+      script: |
+        source .env
+        az login --service-principal -u $servicePrincipalId -p $servicePrincipalKey -t $tenantId
+        mkdir -p .bin
+        az aks install-cli --install-location .bin/kubectl  # install kubelogin
+        az aks get-credentials -n $(aksClusterName) -g $(rgName)
+        kubelogin convert-kubeconfig -l azurecli 
+        kubectl get all -A
+
+  - task: AzureCLI@2
+    displayName: Deploy NGINX Ingress Controller to AKS
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'pscore'
+      scriptLocation: 'inlineScript'
+      failOnStandardError: true
+      inlineScript: |
+        $aksPip = az network public-ip show -n $(ingressPipName) -g $(aksRgName) --query ipAddress
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+        helm upgrade --install nginx ingress-nginx/ingress-nginx --set controller.nodeSelector."kubernetes\.io/os"=linux --set defaultBackend.nodeSelector."kubernetes\.io/os"=linux --set controller.replicaCount=1 --set controller.service.loadBalancerIP="$aksPip" --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+
+  - task: AzureCLI@2
+    displayName: Deploy Cert-Manager to AKS
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'pscore'
+      scriptLocation: 'inlineScript'
+      failOnStandardError: true
+      inlineScript: |
+        kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update
+        helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --version v1.8.2 --set installCRDs=true
+        Start-Sleep -Seconds 60
+
+
+  - task: AzureCLI@2
+    displayName: Deploy Let's Encrypt Cluster Issuer to AKS
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      failOnStandardError: true
+      inlineScript: |
+        cat <<EOF | kubectl apply -n cert-manager -f -
+        apiVersion: cert-manager.io/v1
+        kind: ClusterIssuer
+        metadata:
+          name: letsencrypt
+        spec:
+          acme:
+            email: $(acmeEmailAddress)
+            server: https://acme-v02.api.letsencrypt.org/directory
+            privateKeySecretRef:
+              name: letsencrypt
+            solvers:
+            - http01:
+                ingress:
+                  class: nginx
+        EOF
+
+  - task: AzureCLI@2
+    displayName: Remove current agent IP from AKS whitelist
+    inputs:
+      azureSubscription: $(subscriptionName)
+      scriptType: 'pscore'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        Do {
+          az aks show -g $(rgName) -n $(aksClusterName) | ConvertFrom-Json | Select-Object -ExpandProperty ProvisioningState
+          Start-Sleep 10
+        }
+        Until ((az aks show -g $(rgName) -n $(aksClusterName) | ConvertFrom-Json | Select-Object -ExpandProperty ProvisioningState) -eq 'Succeeded')
+        az aks update -g $(rgName) -n $(aksClusterName) --api-server-authorized-ip-ranges $(vpnIp)

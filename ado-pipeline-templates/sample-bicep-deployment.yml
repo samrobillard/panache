@@ -1,0 +1,18 @@
+name: Deploy Bicep files
+
+variables:
+  azureServiceConnection: '<your-connection-name>'
+  location: '<your-resource-group-location>'
+  templateFile: '<Path to main.bicep>'
+  templateParamsFile: '<Path to params JSON file>'
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: $(azureServiceConnection)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az deployment sub create --location $(location) -f $(templateFile) -p $(templateParamsFile)

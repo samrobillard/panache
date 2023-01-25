@@ -1,3 +1,4 @@
+//version=1.2.6
 param AksClusterName string
 @description('Kubernetes internal DNS zone name')
 param K8sDnsZoneName string
@@ -8,6 +9,11 @@ param K8sVersion string
 param AksNodeCount int
 @description('VM SKU to use in the node pool')
 param AksNodeSize string
+param AksNodeAvailabilityZones array = []
+param AksNodeDiskSize int
+param AksAutoScaling bool = false
+param AksAutoScalingMaxCount int = 1
+param AksAutoScalingMinCount int = 1
 @description('Name of the resource group created by AKS')
 param AksRgName string
 param AksUseAzureKeyvaultSecretsProvider bool = false
@@ -30,6 +36,8 @@ param AksSubnetAddressPrefix string = '10.240.0.0/16'
 @description('Enable Workload Identity on cluster: https://azure.github.io/azure-workload-identity/docs/')
 param EnableWorkloadIdentity bool = false
 
+var contributorRoleDefId = '/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c'
+
 module aksNsg 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/nsg:v1' = {
   name: 'aksNsgDeploy'
   params: {
@@ -50,22 +58,28 @@ module aksVnet 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/virtualnetwo
   }
 }
 
-module egressPip 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/publicip:v1.1' = {
+module egressPip 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/publicip:v1.1.1' = {
   name: 'egressPipDeploy'
   params: {
     PipName: EgressPipName
     Location: Location
     AllocationMethod: 'Static'
+    PipAvailabilityZones: AksNodeAvailabilityZones
   }
 }
 
-module managedCluster 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/managedcluster:v1' = {
+module managedCluster 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/managedcluster:v1.1.3' = {
   name: 'managedClusterDeploy'
   params: {
     AksApiIpToWhitelist: AksApiIpToWhitelist
     AksClusterName: AksClusterName
     AksNodeCount: AksNodeCount
     AksNodeSize: AksNodeSize
+    AksNodeAvailabilityZones: AksNodeAvailabilityZones
+    AksNodeDiskSize: AksNodeDiskSize
+    AksAutoScaling: AksAutoScaling
+    AksAutoScalingMaxCount: AksAutoScalingMaxCount
+    AksAutoScalingMinCount: AksAutoScalingMinCount
     AksRgName: AksRgName
     AksSubnetName: AksSubnetName
     AksVnetName: AksVnetName
@@ -79,7 +93,20 @@ module managedCluster 'br:infra0prod0bicep0assets.azurecr.io/bicep/modules/manag
   }
 }
 
-module aksClusterRoleAssignments 'br:infra0prod0bicep0assets.azurecr.io/bicep/recipes/aksclusterroleassingments:v1' = {
+resource egressPublicIpObject 'Microsoft.Network/publicIPAddresses@2022-01-01' existing = {
+  name: EgressPipName
+}
+
+resource aksEgressPipContributor 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+  name: guid(egressPublicIpObject.id, AksClusterName, contributorRoleDefId)
+  scope: egressPublicIpObject
+  properties: {
+    roleDefinitionId: contributorRoleDefId
+    principalId: managedCluster.outputs.aksIdentityPrincipalId
+  }
+}
+
+module aksClusterRoleAssignments 'br:infra0prod0bicep0assets.azurecr.io/bicep/recipes/aksclusterroleassingments:v1.0.1' = {
   name: 'aksClusterRoleAssignmentsDeploy'
   params: {
     AksClusterName: managedCluster.outputs.aksClusterName

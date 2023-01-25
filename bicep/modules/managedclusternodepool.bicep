@@ -1,3 +1,4 @@
+//version=1.1.0
 param AksClusterName string
 param AksVnetName string
 param AksSubnetName string = 'aksDefault'
@@ -12,8 +13,12 @@ param ManagedClusterNodeSize string
 param ManagedClusterNodeOs string = 'Linux'
 param ManagedClusterMaxPods int = 110
 param ManagedClusterNodeDiskSize int = 30
+param ManagedClusterNodeAvailabilityZones array = []
+param ManagedClusterNodeAutoScaling bool = false
+param ManagedClusterNodeAutoScalingMaxCount int = 1
+param ManagedClusterNodeAutoScalingMinCount int = 1
 
-resource managedCluster 'Microsoft.ContainerService/managedClusters@2022-03-02-preview' existing = {
+resource managedCluster 'Microsoft.ContainerService/managedClusters@2022-05-02-preview' existing = {
   name: AksClusterName
 }
 
@@ -21,6 +26,7 @@ resource managedClusterNodePool 'Microsoft.ContainerService/managedClusters/agen
   name: ManagedClusterNodePoolName
   parent: managedCluster
   properties: {
+    availabilityZones: ManagedClusterNodeAvailabilityZones
     enableNodePublicIP: false
     vnetSubnetID: resourceId('Microsoft.Network/virtualNetworks/subnets', '${AksVnetName}', '${AksSubnetName}')
     osDiskSizeGB: ManagedClusterNodeDiskSize
@@ -30,6 +36,8 @@ resource managedClusterNodePool 'Microsoft.ContainerService/managedClusters/agen
     type: 'VirtualMachineScaleSets'
     mode: 'User'
     maxPods: ManagedClusterMaxPods
-    availabilityZones: []
+    enableAutoScaling: ManagedClusterNodeAutoScaling
+    maxCount: ManagedClusterNodeAutoScaling ? ManagedClusterNodeAutoScalingMaxCount : null
+    minCount: ManagedClusterNodeAutoScaling ? ManagedClusterNodeAutoScalingMinCount : null
   }
 }

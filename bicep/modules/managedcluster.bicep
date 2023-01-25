@@ -1,3 +1,4 @@
+//version=1.1.3
 param AksClusterName string
 @description('Resources location, defaults to resource group location.')
 param Location string = resourceGroup().location
@@ -12,17 +13,24 @@ param K8sVersion string
 param AksNodeCount int
 @description('VM SKU to use in the node pool')
 param AksNodeSize string
+param AksNodeAvailabilityZones array = []
+param AksNodeDiskSize int
 @description('Name of the resource group created by AKS')
 param AksRgName string
-param AksUseAzureKeyvaultSecretsProvider bool
+param AksUseAzureKeyvaultSecretsProvider bool = false
+param AksAutoScaling bool = false
+param AksAutoScalingMaxCount int = 1
+param AksAutoScalingMinCount int = 1
 param AksApiIpToWhitelist array
 param EgressPipResId string
 @description('Enable Workload Identity on cluster: https://azure.github.io/azure-workload-identity/docs/')
 param EnableWorkloadIdentity bool = false
+param Tags object = resourceGroup().tags
 
-resource aksCluster 'Microsoft.ContainerService/managedClusters@2022-03-02-preview' = {
+resource aksCluster 'Microsoft.ContainerService/managedClusters@2022-05-02-preview' = {
   name: AksClusterName
   location: Location
+  tags: Tags
   sku: {
     name: 'Basic'
     tier: 'Paid'
@@ -33,7 +41,7 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2022-03-02-previ
   properties: {
     kubernetesVersion: K8sVersion
     enableRBAC: true
-    disableLocalAccounts: true
+    disableLocalAccounts: false
     dnsPrefix: K8sDnsZoneName
     nodeResourceGroup: AksRgName
     podIdentityProfile: {
@@ -44,14 +52,17 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2022-03-02-previ
         name: 'defaultpool'
         enableNodePublicIP: false
         vnetSubnetID: resourceId('Microsoft.Network/virtualNetworks/subnets', '${AksVnetName}', '${AksSubnetName}')
-        osDiskSizeGB: 30
+        osDiskSizeGB: AksNodeDiskSize
         count: AksNodeCount
         vmSize: AksNodeSize
         osType: 'Linux'
         type: 'VirtualMachineScaleSets'
         mode: 'System'
         maxPods: 110
-        availabilityZones: []
+        enableAutoScaling: AksAutoScaling
+        availabilityZones: AksNodeAvailabilityZones
+        maxCount: AksAutoScaling ? AksAutoScalingMaxCount : null
+        minCount: AksAutoScaling ? AksAutoScalingMinCount : null
       }
     ]
     networkProfile: {

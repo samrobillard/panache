@@ -1,3 +1,4 @@
+//version=1.1.0
 param SqlServerName string
 @allowed([
   'Enabled'
@@ -14,10 +15,12 @@ param AadSqlAdminGroupObjectId string
 @description('Resources location, defaults to resource group location.')
 param Location string = resourceGroup().location
 param ZscalerIp string
+param Tags object = resourceGroup().tags
 
 resource sqlServer 'Microsoft.Sql/servers@2021-11-01-preview' = {
   name: SqlServerName
   location: Location
+  tags: Tags
   properties: {
     publicNetworkAccess: SqlPublicNetworkAccess
     restrictOutboundNetworkAccess: SqlRestrictOutboundNetworkAccess

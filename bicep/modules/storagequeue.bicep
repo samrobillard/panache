@@ -1,3 +1,4 @@
+//version=1.0.0
 param StorageAccountName string
 param QueueName string
 param QueueMetadata object = {}

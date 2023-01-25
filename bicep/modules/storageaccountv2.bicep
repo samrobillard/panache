@@ -1,3 +1,4 @@
+//version=1.2.0
 param StorageAccountName string
 @description('Resources location, defaults to resource group location.')
 param Location string = resourceGroup().location
@@ -8,6 +9,7 @@ param Location string = resourceGroup().location
 @description('Default value is Hot')
 param StorageAccountAccessTier string = 'Hot'
 param StorageAccountBlobPublicAccess bool = false
+param StorageAccountSharedKeyAccess bool = true
 param StorageAccountBlobCorsRules array = []
 @description('Allow permanent delete on the blob retention policy. Default is false.')
 param StorageAccountBlobRetentionPolicyAllowPermanentDelete bool = false
@@ -23,12 +25,16 @@ param StorageAccountContainerRetentionPolicyDays int = 30
 param StorageAccountContainerRetentionPolicyEnable bool = true
 param StorageAccountQueueCorsRules array = []
 param StorageAccountTableCorsRules array = []
+param Tags object = resourceGroup().tags
+@description('SKU name, default to Standard_LRS')
+param Sku string = 'Standard_LRS'
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
   name: StorageAccountName
   location: Location
+  tags: Tags
   sku: {
-    name: 'Standard_LRS'
+    name: Sku
   }
   kind: 'StorageV2'
   identity: {
@@ -38,6 +44,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
     accessTier: StorageAccountAccessTier
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: StorageAccountBlobPublicAccess
+    allowSharedKeyAccess: StorageAccountSharedKeyAccess
     supportsHttpsTrafficOnly: true
     encryption: {
       services: {

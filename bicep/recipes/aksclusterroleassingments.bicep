@@ -1,3 +1,4 @@
+//version=1.0.1
 param AksVnetName string
 param AksClusterName string
 param AksIdentityPrincipalId string
@@ -17,7 +18,7 @@ resource aksVnetResource 'Microsoft.Network/virtualNetworks@2021-08-01' existing
 }
 
 resource aksNetworkContributorRole 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(subscription().id, AksClusterName, networkContributorRbacRoleDefId)
+  name: guid(resourceGroup().id, AksClusterName, networkContributorRbacRoleDefId)
   scope: aksVnetResource
   properties: {
     roleDefinitionId: networkContributorRbacRoleDefId
@@ -26,7 +27,7 @@ resource aksNetworkContributorRole 'Microsoft.Authorization/roleAssignments@2020
 }
 
 resource kubernetesClusterUserRole 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(subscription().id,KubernetesClusterUserGroupObjectId,kubernetesClusterUserRoleDefId)
+  name: guid(resourceGroup().id,KubernetesClusterUserGroupObjectId,kubernetesClusterUserRoleDefId)
   scope: aksClusterResource
   properties: {
     roleDefinitionId: kubernetesClusterUserRoleDefId
@@ -35,7 +36,7 @@ resource kubernetesClusterUserRole 'Microsoft.Authorization/roleAssignments@2020
 }
 
 resource kubernetesServiceRbacClusterAdminRole 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(subscription().id,KubernetesServiceRbacClusterAdminGroupObjectId,kubernetesServiceRbacClusterAdminDefId)
+  name: guid(resourceGroup().id,KubernetesServiceRbacClusterAdminGroupObjectId,kubernetesServiceRbacClusterAdminDefId)
   scope: aksClusterResource
   properties: {
     roleDefinitionId: kubernetesServiceRbacClusterAdminDefId

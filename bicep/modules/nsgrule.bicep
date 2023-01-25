@@ -1,9 +1,12 @@
+//version=1.1.0
 param NsgName string
 param NsgRuleName string
 param NsgRuleProtocol string
 param NsgRuleSourceAddressPrefix string
+param NsgRuleSourceAddressPrefixes array = []
 param NsgRuleSourcePortRange string
 param NsgRuleDestinationAddressPrefix string
+param NsgRuleDestinationAddressPrefixes array = []
 param NsgRuleDestinationPortRange string
 @allowed([
   'Allow'
@@ -28,8 +31,10 @@ resource nsgRule 'Microsoft.Network/networkSecurityGroups/securityRules@2021-08-
   properties: {
     protocol: NsgRuleProtocol
     sourceAddressPrefix: NsgRuleSourceAddressPrefix
+    sourceAddressPrefixes: NsgRuleSourceAddressPrefixes
     sourcePortRange: NsgRuleSourcePortRange
     destinationAddressPrefix: NsgRuleDestinationAddressPrefix
+    destinationAddressPrefixes: NsgRuleDestinationAddressPrefixes
     destinationPortRange: NsgRuleDestinationPortRange
     access: NsgRuleAccess
     priority: NsgRulePriority
